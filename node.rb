@@ -4,12 +4,18 @@
 # Part 1 submission
 
 # --- global variables
+$ip_address = "127.0.0.1"		#how do we find this out? (address of self)
 $ttl = 0
+$packet_size = 256
+$costs_path = "~/costs.csv"
+$dump_path = "table.dump"
+$dump_interval = 30
 $port = 9999
 $round_delay = 10
 $costs_delay = 10
 $round_time = Time.now
 $costs_time = Time.now
+$version = 0
 
 $circuits = {}
 
@@ -19,26 +25,75 @@ $temp_neighbors = {}	#used until graph class complete
 #creates graphnode of self and inserts into graph.
 def init()
 	puts "initializing global variables"
+	lines = IO.readlines("global.cfg")
+	lines.each{ |l|
+		elements = l.split("=") #splitting by =
+		if elements[0].eql? "packet_size"
+			$packet_size = elements[1].to_i
+		end
+		
+		if elements[0].eql? "costs_path"
+			$costs_path = elements[1]
+		end
+
+		if elements[0].eql? "update_interval"
+			$round_delay = elements[1].to_i
+		end
+
+		if elements[0].eql? "dump_path"
+			$dump_path = elements[1]
+		end
+
+		if elements[0].eql? "dump_interval"
+			$dump_interval = elements[1].to_i
+		end
+	}
+	
 end
 
-#runs periodically. updates neighbor costs by reading in costs file.
+#runs periodically. updates direct neighbor costs by reading in costs file.
 def update_costs()
 	puts "updating costs"
+	lines = IO.readlines("~/costs.csv")
+	lines.each{ |l|
+		elements = l.split(",")	#splitting by commas
+
+		if elements[0].eql? "#{$ip_address}"	#if entry is relevant to us
+			puts l
+			#check if the edge exists in the graph. if not, make a new
+			#graphnode and insert into the graph. otherwise update edge
+			#with new cost
+		end
+	}
 end
 
 #runs periodically. floods network with advertisement packets.
 def broadcast()
 	puts "broadcasting packets"
+	#construct advertisement packet message
+	#message = "#{$ip_address},#{graphnode.neighbors},#{$port},#{$version}"
+	$version = $version + 1
+
+	#access hashmap of neighbors through graphnode (self). for each edge,
+	#send an advertisement packet to them.
+
+	#graphnode.neighbors.each{ |n| 
+		#send packet
+	#}
 end
 
 #runs periodically. allows packets to propagate through network.
 def receive()
 	puts "receiving and forwarding packets"
+	#receive packets. forward each packet to all neighbors except sender.
+	#for each unique packet, make a graphnode and add to global list.
 end
 
 #runs periodically. updates network graph with new information.
 def update_graph()
 	puts "updating graph"
+	#create new graph. for each graphnode in global list, insert into graph.
+	#generate new forwarding table based on updated network topology.
 end
 
 
