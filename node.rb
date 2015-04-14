@@ -49,6 +49,13 @@ def init()
 		end
 	}
 	
+	#---initialize graph
+	#$graph = Graph.new
+
+	#---insert self into graph
+	#me = Graphnode.new
+	#$graph.insert(me)
+
 end
 
 #runs periodically. updates direct neighbor costs by reading in costs file.
@@ -96,6 +103,10 @@ def update_graph()
 	#generate new forwarding table based on updated network topology.
 end
 
+#runs periodically. dumps routing table to file for grading purposes.
+def dump_table()
+	puts "dumping routing table"
+end
 
 # --- perform initialization tasks ---
 
