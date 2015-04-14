@@ -10,9 +10,13 @@ $round_delay = 10
 $costs_delay = 10
 $round_time = Time.now
 $costs_time = Time.now
+
 $circuits = {}
 
-#initializes global vars from config file.
+$temp_neighbors = {}	#used until graph class complete
+
+#initializes global vars from config file, initializes network graph,
+#creates graphnode of self and inserts into graph.
 def init()
 	puts "initializing global variables"
 end
@@ -40,8 +44,10 @@ end
 
 # --- perform initialization tasks ---
 
-#-> read in global config files, update global vars (TTL, etc)
 #-> call update_costs() for the first time, propagate neighbor array
+
+init()
+
 update_costs()
 broadcast()	#broadcasts message to neighbors
 receive()	#stores and forwards received messages
