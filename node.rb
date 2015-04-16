@@ -3,6 +3,8 @@
 # CMSC417 Project 3
 # Part 1 submission
 
+#!!! Test marker
+
 require 'socket'
 
 # --- global variables
@@ -24,6 +26,8 @@ $circuits = {}
 #used to map ip addresses to hostnames
 $my_hostname = ""
 $hostnames = {}
+$my_interfaces = [] #array of this host's interfaces
+
 $my_links = {}      #hashmap of neighbor hostnames to interfaces: e.g. for n1: 
                     #my_links["n2"] = "10.0.1.21"
                     #keyset is list of neighbor hostnames
@@ -61,11 +65,11 @@ def init()
 	}
 	
     #identify self
-    $my_hostname = `hostname`   #executes unix command 'hostname'
-    #$my_hostname = "n1"         #test case
+    #$my_hostname = `hostname`   #executes unix command 'hostname'
+    #!!!
+    $my_hostname = "n1"         #test case
     #puts $my_hostname
 
-    my_interfaces = []
     #---propagating ip to hostname hashmap
     lines = IO.readlines("nodes-to-addrs.txt")
     lines.each{ |l|
@@ -74,23 +78,24 @@ def init()
         $hostnames[elements[1]] = elements[0] # "'10.0.0.20' = 'n1'"
     
         if elements[0].eql? $my_hostname
-            my_interfaces.push(elements[1]) #keep track of our interfaces
+            $my_interfaces.push(elements[1]) #keep track of our interfaces
         end
     }
-
+  
     #figure out neighbors + their interfaces. store key val pairs in $my_links
     lines = IO.readlines("addrs-to-links.txt")
     lines.each{ |l|
         elements = l.split(" ")
         
-        if my_interfaces.include? elements[0]
+        if $my_interfaces.include? elements[0]
             $my_links[$hostnames[elements[1]]] = elements[1]
         end
 
-        if my_interfaces.include? elements[1]
+        if $my_interfaces.include? elements[1]
             $my_links[$hostnames[elements[0]]] = elements[0]
         end
     }
+
     #puts $my_links.keys
     
 	#---initialize graph
@@ -105,29 +110,39 @@ end
 #runs periodically. updates direct neighbor costs by reading in costs file.
 def update_costs()
 	puts "updating costs"
-	lines = IO.readlines("~/costs.csv")
+	#lines = IO.readlines("/home/core/costs.csv")
+    #!!!
+    lines = IO.readlines("costs.csv")   #for testing purposes
+
 	lines.each{ |l|
 		elements = l.split(",")	#splitting by commas
 
-		if elements[0].eql? "#{$ip_address}"	#if entry is relevant to us
-			puts l
-			#check if the edge exists in the graph. if not, make a new
-			#graphnode and insert into the graph. otherwise update edge
-			#with new cost
+		if $my_interfaces.include? elements[0] #if entry is relevant to us
+			hostname = $hostnames[elements[1]]
+            cost = elements[2].to_i
+			$costs[hostname] = cost
 		end
+
+
 	}
+
+    #puts $costs.inspect
+    #---update graph with new information
+
+    #check if the edge exists in the graph. if not, make a new
+    #graphnode and insert into the graph. otherwise update edge
+	#with new cost
 end
 
 #runs periodically. floods network with advertisement packets.
 def broadcast()
 	puts "broadcasting packets"
 	#construct advertisement packet message
-	message = "#{$my_hostname},#{$costs},#{$version}"
-	$version = $version + 1
-
+	message = "FLOOD#{$my_hostname},#{$costs.inspect},#{$version}"
+    #puts message
     #broadcast message to all neighbors
     $my_links.keys.each{ |host|
-
+        
         sock = TCPSocket.new($my_links[host], $port)    #open socket
         sock.write(message)                             #sending message
         sock.close
@@ -136,23 +151,35 @@ def broadcast()
 
 end
 
-#runs periodically. allows packets to propagate through network.
-def receive()
-	puts "receiving and forwarding packets (TODO)"
-	#receive packets. forward each packet to all neighbors except sender.
-	#for each unique packet, make a graphnode and add to global list.
+#function to handle external advertisement packets
+def flood(message)
+	puts "processing advertisement packet"
+    packet = message.split(",")
+    sender = packet[0]
+
+    #receive a packet. forward it to all neighbors except sender.
+
+    $my_links.keys.each{ |host|
+        
+        if not(host.eql? sender)    
+            sock = TCPSocket.new($my_links[host], $port)    #open socket
+            sock.write(message)                             #sending message
+            sock.close
+        end
+
+    }
+    
+    #process message.
+
+	#make/update a graphnode and add to graph/update cost/etc
+    #re calculate routing tables for changes in network
 end
 
-#runs periodically. updates network graph with new information.
-def update_graph()
-	puts "updating graph (TODO)"
-	#create new graph. for each graphnode in global list, insert into graph.
-	#generate new forwarding table based on updated network topology.
-end
 
 #runs periodically. dumps routing table to file for grading purposes.
 def dump_table()
 	puts "dumping routing table (TODO)"
+    #will complete after routing table functionality is implemented
 end
 
 # --- perform initialization tasks ---
@@ -163,9 +190,13 @@ end
 init()
 
 update_costs()
-broadcast()	#broadcasts message to neighbors
-receive()	#stores and forwards received messages
-update_graph()	#updates graph with new information
+
+serv_socket = TCPServer.new('',$port)
+serv_socket.listen(15)   #backlog of 15
+
+#!!!
+#sleep(3)       #make sure all other nodes are listening?
+broadcast()     #first broadcast
 
 while 1 < 2 do	#infinite server loop
 
@@ -180,8 +211,6 @@ while 1 < 2 do	#infinite server loop
 	#check if time to broadcast packets
 	if curr_time - $round_time >= $round_delay
 		broadcast()
-		receive()
-		update_graph()
 		$round_time = curr_time
 	end
 
@@ -192,7 +221,25 @@ while 1 < 2 do	#infinite server loop
     end
 
 
-	#--- check for user input? ---
+    #---handle received messages---
+    begin
+        conn = serv_socket.accept_nonblock  #accept a connection if any in queue
+        message = conn.recv($packet_size)
+        conn.close()
+        
+        #if it's an advertisement
+        if message[0..5].eql? "FLOOD"
+            flood(message)
+        end
+
+        #otherwise...?
+    
+
+    rescue Errno::EAGAIN,Errno::EWOULDBLOCK
+        #nothing in queue!
+    end
+
+	#--- check for user input? (i.e. message sending?) ---
 
 end
 
