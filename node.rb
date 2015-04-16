@@ -15,13 +15,16 @@ $round_delay = 10
 $costs_delay = 10
 $round_time = Time.now
 $costs_time = Time.now
+$dump_time = Time.now
 $version = 0
 
 $circuits = {}
 
-$temp_neighbors = {}	#used until graph class complete
+#used to map ip addresses to hostnames
+$hostnames = {}
 
 #initializes global vars from config file, initializes network graph,
+#propagates hashmap of ip addresses to hostnames,
 #creates graphnode of self and inserts into graph.
 def init()
 	puts "initializing global variables"
@@ -49,6 +52,14 @@ def init()
 		end
 	}
 	
+    #---propagating ip to hostname hashmap
+    lines = IO.readlines("nodes-to-addrs.txt")
+    lines.each{ |l|
+        elements = l.split(" ")
+        #puts elements[0],elements[1]
+        $hostnames[elements[1]] = elements[0] # "'10.0.0.20' = 'n1'"
+    }
+
 	#---initialize graph
 	#$graph = Graph.new
 
@@ -76,7 +87,7 @@ end
 
 #runs periodically. floods network with advertisement packets.
 def broadcast()
-	puts "broadcasting packets"
+	puts "broadcasting packets (TODO)"
 	#construct advertisement packet message
 	#message = "#{$ip_address},#{graphnode.neighbors},#{$port},#{$version}"
 	$version = $version + 1
@@ -91,26 +102,27 @@ end
 
 #runs periodically. allows packets to propagate through network.
 def receive()
-	puts "receiving and forwarding packets"
+	puts "receiving and forwarding packets (TODO)"
 	#receive packets. forward each packet to all neighbors except sender.
 	#for each unique packet, make a graphnode and add to global list.
 end
 
 #runs periodically. updates network graph with new information.
 def update_graph()
-	puts "updating graph"
+	puts "updating graph (TODO)"
 	#create new graph. for each graphnode in global list, insert into graph.
 	#generate new forwarding table based on updated network topology.
 end
 
 #runs periodically. dumps routing table to file for grading purposes.
 def dump_table()
-	puts "dumping routing table"
+	puts "dumping routing table (TODO)"
 end
 
 # --- perform initialization tasks ---
 
 #-> call update_costs() for the first time, propagate neighbor array
+#-> identify hostname of self
 
 init()
 
@@ -136,6 +148,13 @@ while 1 < 2 do	#infinite server loop
 		update_graph()
 		$round_time = curr_time
 	end
+
+    #check if time to dump routing table
+    if curr_time - $dump_time >= $dump_interval
+        dump_table()
+        $dump_time = curr_time
+    end
+
 
 	#--- check for user input? ---
 
