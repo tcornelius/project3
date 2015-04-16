@@ -3,14 +3,15 @@
 # CMSC417 Project 3
 # Part 1 submission
 
+require 'socket'
+
 # --- global variables
-$ip_address = "127.0.0.1"		#how do we find this out? (address of self)
+$port = 9999
 $ttl = 0
 $packet_size = 256
 $costs_path = "~/costs.csv"
 $dump_path = "table.dump"
 $dump_interval = 30
-$port = 9999
 $round_delay = 10
 $costs_delay = 10
 $round_time = Time.now
@@ -26,6 +27,9 @@ $hostnames = {}
 $my_links = {}      #hashmap of neighbor hostnames to interfaces: e.g. for n1: 
                     #my_links["n2"] = "10.0.1.21"
                     #keyset is list of neighbor hostnames
+
+$costs = {}         #hashmap of neighbor hostnames to their costs. updated
+                    #periodically by update_costs()
 
 #initializes global vars from config file, initializes network graph,
 #propagates hashmap of ip addresses to hostnames, identifies self
@@ -116,17 +120,20 @@ end
 
 #runs periodically. floods network with advertisement packets.
 def broadcast()
-	puts "broadcasting packets (TODO)"
+	puts "broadcasting packets"
 	#construct advertisement packet message
-	#message = "#{$ip_address},#{graphnode.neighbors},#{$port},#{$version}"
+	message = "#{$my_hostname},#{$costs},#{$version}"
 	$version = $version + 1
 
-	#access hashmap of neighbors through graphnode (self). for each edge,
-	#send an advertisement packet to them.
+    #broadcast message to all neighbors
+    $my_links.keys.each{ |host|
 
-	#graphnode.neighbors.each{ |n| 
-		#send packet
-	#}
+        sock = TCPSocket.new($my_links[host], $port)    #open socket
+        sock.write(message)                             #sending message
+        sock.close
+
+    }
+
 end
 
 #runs periodically. allows packets to propagate through network.
