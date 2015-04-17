@@ -85,33 +85,33 @@ class Graph
 				end
 			end
 		end
-		puts "--------------------"
+		# puts "--------------------"
 		return dist
 	end
 
 end
 
-gr = Graph.new
-a = Graph_Node.new('A', -1, -1)
-b = Graph_Node.new('B', -1, -1)
-c = Graph_Node.new('C', -1, -1)
-d = Graph_Node.new('D', -1, -1)
-e = Graph_Node.new('E', -1, -1)
-f = Graph_Node.new('F', -1, -1)
-g = Graph_Node.new('G', -1, -1)
-h = Graph_Node.new('H', -1, -1)
+# gr = Graph.new
+# a = Graph_Node.new('A', -1, -1)
+# b = Graph_Node.new('B', -1, -1)
+# c = Graph_Node.new('C', -1, -1)
+# d = Graph_Node.new('D', -1, -1)
+# e = Graph_Node.new('E', -1, -1)
+# f = Graph_Node.new('F', -1, -1)
+# g = Graph_Node.new('G', -1, -1)
+# h = Graph_Node.new('H', -1, -1)
 
-gr.add_node(a, {b => 7, c => 8})
-gr.add_node(b, {a => 7, f => 2})
-gr.add_node(c, {a => 8, f => 6, g => 4})
-gr.add_node(d, {f => 8})
-gr.add_node(e, {h => 1})
-gr.add_node(f, {b => 2, c => 6, d => 8, g => 9, h => 3})
-gr.add_node(g, {c => 4, f => 9})
-gr.add_node(h, {e => 1, f => 3})
+# gr.add_node(a, {b => 7, c => 8})
+# gr.add_node(b, {a => 7, f => 2})
+# gr.add_node(c, {a => 8, f => 6, g => 4})
+# gr.add_node(d, {f => 8})
+# gr.add_node(e, {h => 1})
+# gr.add_node(f, {b => 2, c => 6, d => 8, g => 9, h => 3})
+# gr.add_node(g, {c => 4, f => 9})
+# gr.add_node(h, {e => 1, f => 3})
 
-gr.dijkstra(a, h).each{|n|
-	puts n.to_s
-}
-puts (2**(0.size * 8 -2) -1)
+# gr.dijkstra(a, h).each{|n|
+# 	puts n.to_s
+# }
+# puts (2**(0.size * 8 -2) -1)
 
