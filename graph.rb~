@@ -79,10 +79,11 @@ class Graph
 			end
 			@vertices[smallest].each do | neighbor, cost |
 				new_cost = dist[smallest] + @vertices[smallest][neighbor]
-                puts "new_cost: #{new_cost}\tdist[#{neighbor}]: #{dist[neighbor]}"
-                if dist[neighbor] == nil or neighbor.class == String
+                
+                if dist[neighbor] == nil
                     next
                 end
+                puts "new_cost: #{new_cost}\tdist[#{neighbor}]: #{dist[neighbor]}"
 				if new_cost < dist[neighbor]
 					dist[neighbor] = new_cost
 					prev[neighbor] = smallest

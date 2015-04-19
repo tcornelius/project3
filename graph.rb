@@ -83,7 +83,7 @@ class Graph
                 if dist[neighbor] == nil
                     next
                 end
-                puts "new_cost: #{new_cost}\tdist[#{neighbor}]: #{dist[neighbor]}"
+                #puts "new_cost: #{new_cost}\tdist[#{neighbor}]: #{dist[neighbor]}"
 				if new_cost < dist[neighbor]
 					dist[neighbor] = new_cost
 					prev[neighbor] = smallest

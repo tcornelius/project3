@@ -158,7 +158,7 @@ def init()
             cost = elements[2].to_i
             #puts "keys "+"#{$costs.keys}"
 
-            if not(neighbor.class === "String")
+            if not(neighbor.class == String)
                 next
             end
 
@@ -168,13 +168,13 @@ def init()
             #puts $costs.inspect
             #puts temp_node
             $network.vertices.keys.each{ |k|
-                puts "#{k.hostname}: #{$network.vertices[k].inspect}"
+                #puts "#{k.hostname}: #{$network.vertices[k].inspect}"
             }
             if not(temp_node == nil)
                 $network.vertices[me][temp_node] = cost
                 $network.vertices[temp_node][me] = cost
             end
-            puts
+            #puts
                        
             #add other way?
             #puts $costs.inspect
@@ -187,14 +187,14 @@ def init()
     
     $network.vertices.keys.each{ |k|
         $network.vertices[k].keys.each{ |k2|
-            if k2.class === "String"
+            if k2.class == String
                 $network.vertices[k].delete(k2)
             end
         }
     }
     #---
 	$network.vertices.keys.each{ |k|
-        puts "#{k.hostname}: #{$network.vertices[k].inspect}"
+        #puts "#{k.hostname}: #{$network.vertices[k].inspect}"
     } 
 
     #puts $network.vertices.keys
@@ -272,15 +272,15 @@ def update_routing_table(graph, me)
     
     $routing_table[$my_hostname] = $my_hostname
     graph.vertices.keys.each {|host|
-        puts "#{host.hostname}: #{graph.vertices[host].inspect}"
-        puts
+        #puts "#{host.hostname}: #{graph.vertices[host].inspect}"
+        #puts
         if(host.hostname != $my_hostname)
             
             # running dijkstra's on every node in the graph from the current node and adding the 1st neighbor to the routing table.
 
             
             next_neighbor = graph.dijkstra(me, host)
-            if(next_neighbor.class === "Array")
+            if(next_neighbor.class == Array)
                 $routing_table[host.hostname] = next_neighbor.last
             else
                 $routing_table[host.hostname] = -1
@@ -298,7 +298,7 @@ def broadcast()
     #puts "#{$costs.inspect}"
     hash = {}
     $costs.keys.each{ |k|
-        if k.class === "String"
+        if k.class == String
             hash[k] = $costs[k] #weed out mystical spooky keys
         end
     }
@@ -411,7 +411,10 @@ end
 
 #runs periodically. dumps routing table to file for grading purposes.
 def dump_table()
+    puts "======= Routing Table ======="
 	puts $routing_table.inspect
+
+    sleep(5)
     #will complete after routing table functionality is implemented
 end
 
@@ -424,8 +427,8 @@ init()
 
 update_costs()
 update_routing_table($network, $me_node)
-dump_table()
-exit()
+#dump_table()
+#exit()
 
 serv_socket = TCPServer.new('',$port)
 serv_socket.listen(15)   #backlog of 15
