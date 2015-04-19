@@ -14,9 +14,9 @@ $ttl = 0
 $packet_size = 256
 $costs_path = "~/costs.csv"
 $dump_path = "table.dump"
-$dump_interval = 30
-$round_delay = 10
-$costs_delay = 10
+$dump_interval = 10
+$round_delay = 5
+$costs_delay = 60
 $round_time = Time.now
 $costs_time = Time.now
 $dump_time = Time.now
@@ -38,7 +38,7 @@ $costs = {}         #hashmap of neighbor hostnames to their costs. updated
 
 $routing_table = {} #hashmap of destinations to next nodes
 
-$network = None
+$network = nil
 
 #initializes global vars from config file, initializes network graph,
 #propagates hashmap of ip addresses to hostnames, identifies self
@@ -72,7 +72,7 @@ def init()
     #identify self
     #$my_hostname = `hostname`   #executes unix command 'hostname'
     #!!!
-    $my_hostname = "n1"         #test case
+    #$my_hostname = "n1"         #test case
     #puts $my_hostname
 
     #---propagating ip to hostname hashmap
@@ -123,10 +123,10 @@ end
 
 #runs periodically. updates direct neighbor costs by reading in costs file.
 def update_costs()
-	puts "updating costs"
-	#lines = IO.readlines("/home/core/costs.csv")
+	puts "updating costs from file"
+	lines = IO.readlines("/home/core/costs.csv")
     #!!!
-    lines = IO.readlines("costs.csv")   #for testing purposes
+    #lines = IO.readlines("costs.csv")   #for testing purposes
 
     #neighbors_mentioned = []
 
@@ -169,6 +169,7 @@ end
 
 #runs periodically - updates routing table
 def update_routing_table()
+    puts "Updating routing table"
     # run dijsktra from us to every other node in the graph $network
     $routing_table[$my_hostname] = $my_hostname
     $network.vertices.each {|host, edges|
@@ -221,7 +222,7 @@ def flood(message)
     }
     
     #process message.
-    /FLOOD(.*),{(.*)},(.*)/.match(message)
+    /FLOOD(.*),\{(.*)\},(.*)/.match(message)
     sender = $1
     links = $2
     version = $3
@@ -296,6 +297,7 @@ while 1 < 2 do	#infinite server loop
     begin
         conn = serv_socket.accept_nonblock  #accept a connection if any in queue
         message = conn.recv($packet_size)
+        puts message
         conn.close()
         
         #if it's an advertisement
