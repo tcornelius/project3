@@ -9,7 +9,7 @@ class Graph_Node
 	# The hostname and version are of the source node.
 	attr_accessor "hostname", "version"
 
-	def initialize(hostname, port, version)
+	def initialize(hostname, version)
 		@hostname = hostname
 		@version = version
 	end
