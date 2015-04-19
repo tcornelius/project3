@@ -169,7 +169,20 @@ end
 
 #runs periodically - updates routing table
 def update_routing_table()
-    
+    # run dijsktra from us to every other node in the graph $network
+    $routing_table[$my_hostname] = $my_hostname
+    $network.vertices.each {|host, edges|
+        if(host.hostname != $my_hostname)
+            
+            # running dijkstra's on every node in the graph from the current node and adding the 1st neighbor to the routing table. 
+            next_neighbor = $network.dijsktra($my_hostname, host).last
+            if(next_neighbor != nil)
+                routing_table[host] = next_neighbor
+            end
+        end
+    }
+
+
 end
 
 #runs periodically. floods network with advertisement packets.
