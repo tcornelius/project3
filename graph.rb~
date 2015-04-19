@@ -7,7 +7,7 @@
 class Graph_Node
 
 	# The hostname and version are of the source node.
-	attr_accessor "hostname", "version"
+	attr_accessor :hostname, :version
 
 	def initialize(hostname, version)
 		@hostname = hostname
@@ -25,13 +25,15 @@ class Graph
 	# vertices is the list of edges or vertices in the graph
 	# the edges is a hash map that stores the list of neighbors and costs. The neighbor ip-address is going to be used as the key and the cost will be the value.
 
-	attr_accessor "vertices"
+	attr_accessor :vertices, :dijkstra
 
 	def initialize()
 		@vertices = {}
 	end
 
 	def add_node(host, edges)
+        #puts "adding node to graph"
+        #puts host.class
 		@vertices[host] = edges
 	end
 
@@ -77,6 +79,10 @@ class Graph
 			end
 			@vertices[smallest].each do | neighbor, cost |
 				new_cost = dist[smallest] + @vertices[smallest][neighbor]
+                puts "new_cost: #{new_cost}\tdist[#{neighbor}]: #{dist[neighbor]}"
+                if dist[neighbor] == nil or neighbor.class == String
+                    next
+                end
 				if new_cost < dist[neighbor]
 					dist[neighbor] = new_cost
 					prev[neighbor] = smallest

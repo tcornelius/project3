@@ -32,6 +32,8 @@ class Graph
 	end
 
 	def add_node(host, edges)
+        #puts "adding node to graph"
+        #puts host.class
 		@vertices[host] = edges
 	end
 
@@ -77,6 +79,11 @@ class Graph
 			end
 			@vertices[smallest].each do | neighbor, cost |
 				new_cost = dist[smallest] + @vertices[smallest][neighbor]
+                
+                if dist[neighbor] == nil
+                    next
+                end
+                puts "new_cost: #{new_cost}\tdist[#{neighbor}]: #{dist[neighbor]}"
 				if new_cost < dist[neighbor]
 					dist[neighbor] = new_cost
 					prev[neighbor] = smallest
