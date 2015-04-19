@@ -6,13 +6,13 @@
 #!!! Test marker
 
 require 'socket'
-require "graph"
+require "/home/core/sandbox/project3/graph"
 
 # --- global variables
 $port = 9998
 $ttl = 0
 $packet_size = 256
-$costs_path = "~/costs.csv"
+$costs_path = "/home/core/costs.csv"
 $dump_path = "table.dump"
 $dump_interval = 10
 $round_delay = 5
@@ -46,7 +46,7 @@ $network = nil
 #creates graphnode of self and inserts into graph.
 def init()
 	puts "initializing global variables"
-	lines = IO.readlines("global.cfg")
+	lines = IO.readlines("/home/core/global.cfg")
 	lines.each{ |l|
 		elements = l.split("=") #splitting by =
 		if elements[0] == "packet_size"
@@ -78,7 +78,7 @@ def init()
     #puts $my_hostname
 
     #---propagating ip to hostname hashmap
-    lines = IO.readlines("nodes-to-addrs.txt")
+    lines = IO.readlines("/home/core/nodes-to-addrs.txt")
     lines.each{ |l|
         elements = l.split(" ")
         #puts elements[0],elements[1]
@@ -94,7 +94,7 @@ def init()
     #puts $my_interfaces
     #figure out neighbors + their interfaces. store key val pairs in $my_links
 
-    lines = IO.readlines("addrs-to-links.txt")
+    lines = IO.readlines("/home/core/addrs-to-links.txt")
     lines.each{ |l|
         elements = l.split(" ")
         
