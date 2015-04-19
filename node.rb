@@ -131,16 +131,19 @@ def init()
     
     #!!!
     #lines = IO.readlines("costs.csv")   #for testing purposes
-
+    
     #neighbors_mentioned = []
     #---
+    
 	cost_lines.each{ |l|
 		elements = l.split(",")	#splitting by commas
-        
+        temp_node = nil
 		if $my_interfaces.include? elements[0] #if entry is relevant to us
-			
-            temp_node = nil
+			#puts $costs.inspect
+            
             neighbor = $hostnames[elements[1]]
+            #puts neighbor.class
+
             $network.vertices.keys.each{ |v|
                 if v.hostname === neighbor
                     temp_node = v
@@ -148,15 +151,27 @@ def init()
             }
 
             cost = elements[2].to_i
+            #puts "keys "+"#{$costs.keys}"
+
+            if not(neighbor.class === "String")
+                next
+            end
+
+            #puts neighbor
+            
 			$costs[neighbor] = cost
+            #puts $costs.inspect
             #puts temp_node
             $network.vertices[me][temp_node] = cost
             #add other way?
-
+            #puts $costs.inspect
             #neighbors_mentioned.push(neighbor)
+            #puts i
+            
 		end
 
 	}
+    
     #---
 	
 
@@ -188,7 +203,6 @@ def update_costs()
                 end
             }
 
-            neighbor = $hostnames[elements[1]]
             cost = elements[2].to_i
 			$costs[neighbor] = cost
 
@@ -244,20 +258,26 @@ end
 def broadcast()
 	puts "broadcasting packets"
 	#construct advertisement packet message
-    puts "#{$costs.inspect}"
-	message = "FLOOD#{$my_hostname},#{$costs.inspect},#{$version}"
+    #puts "#{$costs.inspect}"
+    hash = {}
+    $costs.keys.each{ |k|
+        if k.class === "String"
+            hash[k] = $costs[k] #weed out mystical spooky keys
+        end
+    }
+	message = "FLOOD#{$my_hostname},#{hash.inspect},#{$version}"
     #puts message
     #broadcast message to all neighbors
     #puts "hi "+"#{$my_links}"
     $my_links.keys.each{ |host|
         
         begin
-            puts "sending packet to #{host}: #{$my_links[host]}"
+            #puts "sending packet to #{host}: #{$my_links[host]}"
             sock = TCPSocket.new($my_links[host], $port)    #open socket
             sock.write(message)                             #sending message
             sock.close
         rescue Errno::ECONNREFUSED
-            puts "connection refused"
+            #puts "connection refused"
         end
     }
 
@@ -274,9 +294,12 @@ def flood(message)
     $my_links.keys.each{ |host|
         
         if not(host == sender)    
-            sock = TCPSocket.new($my_links[host], $port)    #open socket
-            sock.write(message)                             #sending message
-            sock.close
+            begin
+                sock = TCPSocket.new($my_links[host], $port)    #open socket
+                sock.write(message)                             #sending message
+                sock.close
+            rescue Errno::ECONNREFUSED
+            end
         end
 
     }
@@ -287,8 +310,10 @@ def flood(message)
     links = $2
     version = $3
 
-    links = links[1..links.length-1] #strip {}
+    links = links[1..links.length-1].strip #strip {}
     link_list = links.split(',')
+    link_list.each{ |link| link.strip}
+    puts link_list
     link_list.each{ |link|
         elements = link.split("=>")
         neighbor = elements[0][1..elements[0].length-1] #strip quotes
@@ -328,6 +353,7 @@ serv_socket.listen(15)   #backlog of 15
 
 #!!!
 sleep(3)       #make sure all other nodes are listening?
+
 broadcast()     #first broadcast
 
 while 1 < 2 do	#infinite server loop
@@ -361,7 +387,8 @@ while 1 < 2 do	#infinite server loop
         conn.close()
         
         #if it's an advertisement
-        if message[0..5] == "FLOOD"
+        
+        if message[0..4] == "FLOOD"
             flood(message)
         end
 
