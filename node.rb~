@@ -240,11 +240,11 @@ def update_routing_table()
     puts "Updating routing table"
     # run dijsktra from us to every other node in the graph $network
     $routing_table[$my_hostname] = $my_hostname
-    $network.vertices.each {|host, edges|
+    $network.vertices.keys.each {|host|
         if(host.hostname != $my_hostname)
             
             # running dijkstra's on every node in the graph from the current node and adding the 1st neighbor to the routing table. 
-            next_neighbor = $network.dijsktra($my_hostname, host).last
+            next_neighbor = $network.dijsktra($me_node, host).last
             if(next_neighbor != nil)
                 routing_table[host] = next_neighbor
             end
@@ -310,23 +310,43 @@ def flood(message)
     links = $2
     version = $3
 
-    links = links[1..links.length-1].strip #strip {}
-    link_list = links.split(',')
-    link_list.each{ |link| link.strip}
-    puts link_list
+    links = links.strip
+    
+    link_list = links.split(', ')
+    
     link_list.each{ |link|
         elements = link.split("=>")
-        neighbor = elements[0][1..elements[0].length-1] #strip quotes
+        neighbor = elements[0][1..elements[0].length-2] #strip quotes
+        
         cost = elements[1].to_i
+        node = nil
+        node2 = nil
 
-        if not($network.vertices.keys.include? neighbor)
+        $network.vertices.keys.each{ |v|
+            if v.hostname === neighbor
+                node = v
+            end
+        }
+
+        if node == nil
             #if neighbor is not known
             node = Graph_Node.new(neighbor,$version)
             $network.add_node(node, {})
         end
 
         #make sure this doesn't have quotes around it
-        $network.vertices[sender][neighbor] = cost
+        $network.vertices.keys.each{ |v|
+            if v.hostname === sender
+                node2 = v
+            end
+        }
+
+        if node2 == nil
+            node2 = Graph_Node.new(sender,$version)
+            $network.add_node(node2, {})
+        end
+
+        $network.vertices[node2][node] = cost
     }
     
 	update_routing_table()
@@ -387,7 +407,7 @@ while 1 < 2 do	#infinite server loop
         conn.close()
         
         #if it's an advertisement
-        puts message[0..4]
+        
         if message[0..4] == "FLOOD"
             flood(message)
         end
