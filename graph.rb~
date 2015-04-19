@@ -6,12 +6,11 @@
 # This is the node class used in the graph. It will be produced after a broadcast is received.
 class Graph_Node
 
-	# The ip-address, port variables, and version are of the source node.
-	attr_accessor "ip_address", "port", "version"
+	# The hostname and version are of the source node.
+	attr_accessor "hostname", "version"
 
-	def initialize(hostname, port, version)
+	def initialize(hostname, version)
 		@hostname = hostname
-		@port = port
 		@version = version
 	end
 
@@ -51,7 +50,7 @@ class Graph
 
 		@vertices.each do | key, value |
 #			puts key.ip_address
-			if key.ip_address == start.ip_address
+			if key.hostname == start.hostname
 				dist[key] = 0
 				hosts[key] = 0
 			else
@@ -64,7 +63,7 @@ class Graph
 		while hosts
 			smallest = get_smallest_neighbor(hosts)
 
-			if smallest.ip_address == finish.ip_address
+			if smallest.hostname == finish.hostname
 				path = []
 				while prev[smallest]
 					path.push(smallest)

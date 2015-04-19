@@ -41,6 +41,8 @@ $routing_table = {} #hashmap of destinations to next nodes
 
 $network = nil
 
+
+
 #initializes global vars from config file, initializes network graph,
 #propagates hashmap of ip addresses to hostnames, identifies self
 #creates graphnode of self and inserts into graph.
@@ -113,7 +115,7 @@ def init()
     
 
 	#---initialize graph
-	$network = Graph.new
+	$network = Graph.new()
 	#---insert self into graph
 	me = Graph_Node.new(@hostname,$version)
     $me_node = me
@@ -244,6 +246,7 @@ def update_routing_table()
         if(host.hostname != $my_hostname)
             
             # running dijkstra's on every node in the graph from the current node and adding the 1st neighbor to the routing table. 
+            
             next_neighbor = $network.dijsktra($me_node, host).last
             if(next_neighbor != nil)
                 routing_table[host] = next_neighbor
