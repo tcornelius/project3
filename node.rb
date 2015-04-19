@@ -128,6 +128,8 @@ def update_costs()
     #!!!
     lines = IO.readlines("costs.csv")   #for testing purposes
 
+    #neighbors_mentioned = []
+
 	lines.each{ |l|
 		elements = l.split(",")	#splitting by commas
 
@@ -137,9 +139,28 @@ def update_costs()
 			$costs[neighbor] = cost
 
             $network.vertices[$hostname][neighbor] = cost
+
+            #neighbors_mentioned.push(neighbor)
 		end
 
 	}
+
+    #neighbors_mentioned.each{ |n|
+     #   if not($my_links.keys.include? n)
+            #add to everything
+      #  end
+
+    #}
+
+    #$my_links.keys.each{ |n|
+     #   if not(neighbors_mentioned.include? n)
+            #remove from everything
+      #      $my_links
+       # end
+
+    #}
+
+
 
     #puts $costs.inspect
     #---update graph with new information
@@ -187,9 +208,29 @@ def flood(message)
     }
     
     #process message.
+    /FLOOD#{(.*)},#{(.*)},#{(.*)}/.match(message)
+    sender = $1
+    links = $2
+    version = $3
 
-	#make/update a graphnode and add to graph/update cost/etc
-    #re calculate routing tables for changes in network
+    links = links[1..links.length-1] #strip {}
+    link_list = links.split(',')
+    link_list.each{ |link|
+        elements = link.split("=>")
+        neighbor = elements[0]
+        cost = elements[1]
+
+        if not($network.vertices.keys.include? neighbor)
+            #if neighbor is not known
+            node = Graph_Node.new(neighbor,$version)
+            $network.add_node(node, {})
+        end
+
+        #make sure this doesn't have quotes around it
+        $network.vertices[sender][neighbor] = cost.to_i
+    }
+    
+	update_routing_table()
 end
 
 
