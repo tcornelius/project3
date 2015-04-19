@@ -221,7 +221,7 @@ def flood(message)
     }
     
     #process message.
-    /FLOOD#{(.*)},#{(.*)},#{(.*)}/.match(message)
+    /FLOOD(.*),{(.*)},(.*)/.match(message)
     sender = $1
     links = $2
     version = $3
@@ -230,8 +230,8 @@ def flood(message)
     link_list = links.split(',')
     link_list.each{ |link|
         elements = link.split("=>")
-        neighbor = elements[0]
-        cost = elements[1]
+        neighbor = elements[0][1..elements[0].length-1] #strip quotes
+        cost = elements[1].to_i
 
         if not($network.vertices.keys.include? neighbor)
             #if neighbor is not known
@@ -240,7 +240,7 @@ def flood(message)
         end
 
         #make sure this doesn't have quotes around it
-        $network.vertices[sender][neighbor] = cost.to_i
+        $network.vertices[sender][neighbor] = cost
     }
     
 	update_routing_table()
@@ -249,7 +249,7 @@ end
 
 #runs periodically. dumps routing table to file for grading purposes.
 def dump_table()
-	puts "dumping routing table (TODO)"
+	puts $routing_table.inspect
     #will complete after routing table functionality is implemented
 end
 
@@ -266,7 +266,7 @@ serv_socket = TCPServer.new('',$port)
 serv_socket.listen(15)   #backlog of 15
 
 #!!!
-#sleep(3)       #make sure all other nodes are listening?
+sleep(2)       #make sure all other nodes are listening?
 broadcast()     #first broadcast
 
 while 1 < 2 do	#infinite server loop
