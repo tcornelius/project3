@@ -6,11 +6,12 @@
 # This is the node class used in the graph. It will be produced after a broadcast is received.
 class Graph_Node
 
-	# The hostname and version are of the source node.
-	attr_accessor "hostname", "version"
+	# The ip-address, port variables, and version are of the source node.
+	attr_accessor "ip_address", "port", "version"
 
 	def initialize(hostname, port, version)
 		@hostname = hostname
+		@port = port
 		@version = version
 	end
 

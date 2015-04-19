@@ -6,6 +6,7 @@
 #!!! Test marker
 
 require 'socket'
+require "graph"
 
 # --- global variables
 $port = 9999
@@ -34,6 +35,10 @@ $my_links = {}      #hashmap of neighbor hostnames to interfaces: e.g. for n1:
 
 $costs = {}         #hashmap of neighbor hostnames to their costs. updated
                     #periodically by update_costs()
+
+$routing_table = {} #hashmap of destinations to next nodes
+
+$network = None
 
 #initializes global vars from config file, initializes network graph,
 #propagates hashmap of ip addresses to hostnames, identifies self
@@ -99,11 +104,20 @@ def init()
     #puts $my_links.keys
     
 	#---initialize graph
-	#$graph = Graph.new
+	$network = Graph.new
 
 	#---insert self into graph
-	#me = Graphnode.new
-	#$graph.insert(me)
+	me = Graph_Node.new(@hostname,$version)
+    
+    $costs.keys.each{ |host|
+        node = Graph_Node.new(host, $version)
+        temp = {}
+        $network.add_node(node, temp)
+    }
+
+	$network.add_node(me, $costs)
+
+    #---run djikstras, generate early routing table
 
 end
 
@@ -118,20 +132,23 @@ def update_costs()
 		elements = l.split(",")	#splitting by commas
 
 		if $my_interfaces.include? elements[0] #if entry is relevant to us
-			hostname = $hostnames[elements[1]]
+			neighbor = $hostnames[elements[1]]
             cost = elements[2].to_i
-			$costs[hostname] = cost
-		end
+			$costs[neighbor] = cost
 
+            $network.vertices[$hostname][neighbor] = cost
+		end
 
 	}
 
     #puts $costs.inspect
     #---update graph with new information
+    
+end
 
-    #check if the edge exists in the graph. if not, make a new
-    #graphnode and insert into the graph. otherwise update edge
-	#with new cost
+#runs periodically - updates routing table
+def update_routing_table()
+    
 end
 
 #runs periodically. floods network with advertisement packets.
