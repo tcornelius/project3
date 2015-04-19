@@ -9,7 +9,7 @@ require 'socket'
 require "graph"
 
 # --- global variables
-$port = 9999
+$port = 9998
 $ttl = 0
 $packet_size = 256
 $costs_path = "~/costs.csv"
@@ -21,6 +21,7 @@ $round_time = Time.now
 $costs_time = Time.now
 $dump_time = Time.now
 $version = 0
+$me_node = nil
 
 $circuits = {}
 
@@ -48,29 +49,30 @@ def init()
 	lines = IO.readlines("global.cfg")
 	lines.each{ |l|
 		elements = l.split("=") #splitting by =
-		if elements[0].eql? "packet_size"
+		if elements[0] == "packet_size"
 			$packet_size = elements[1].to_i
 		end
 		
-		if elements[0].eql? "costs_path"
+		if elements[0] == "costs_path"
 			$costs_path = elements[1]
 		end
 
-		if elements[0].eql? "update_interval"
+		if elements[0] == "update_interval"
 			$round_delay = elements[1].to_i
 		end
 
-		if elements[0].eql? "dump_path"
+		if elements[0] == "dump_path"
 			$dump_path = elements[1]
 		end
 
-		if elements[0].eql? "dump_interval"
+		if elements[0] == "dump_interval"
 			$dump_interval = elements[1].to_i
 		end
 	}
 	
     #identify self
-    #$my_hostname = `hostname`   #executes unix command 'hostname'
+    $my_hostname = `hostname`   #executes unix command 'hostname'
+    $my_hostname = $my_hostname.strip()
     #!!!
     #$my_hostname = "n1"         #test case
     #puts $my_hostname
@@ -81,13 +83,17 @@ def init()
         elements = l.split(" ")
         #puts elements[0],elements[1]
         $hostnames[elements[1]] = elements[0] # "'10.0.0.20' = 'n1'"
-    
-        if elements[0].eql? $my_hostname
+        
+        
+        if elements[0] === $my_hostname
+            #puts "adding"
             $my_interfaces.push(elements[1]) #keep track of our interfaces
         end
     }
   
+    #puts $my_interfaces
     #figure out neighbors + their interfaces. store key val pairs in $my_links
+
     lines = IO.readlines("addrs-to-links.txt")
     lines.each{ |l|
         elements = l.split(" ")
@@ -103,20 +109,59 @@ def init()
 
     #puts $my_links.keys
     
+    # populating $costs
+    
+
 	#---initialize graph
 	$network = Graph.new
-
 	#---insert self into graph
 	me = Graph_Node.new(@hostname,$version)
+    $me_node = me
     
-    $costs.keys.each{ |host|
+    #puts $my_links.keys
+    $my_links.keys.each{ |host|
+        puts "adding neighbor to graph"
         node = Graph_Node.new(host, $version)
         temp = {}
         $network.add_node(node, temp)
     }
+    $network.add_node(me, $costs)
 
-	$network.add_node(me, $costs)
+    cost_lines = IO.readlines("/home/core/costs.csv")
+    
+    #!!!
+    #lines = IO.readlines("costs.csv")   #for testing purposes
 
+    #neighbors_mentioned = []
+    #---
+	cost_lines.each{ |l|
+		elements = l.split(",")	#splitting by commas
+        
+		if $my_interfaces.include? elements[0] #if entry is relevant to us
+			
+            temp_node = nil
+            neighbor = $hostnames[elements[1]]
+            $network.vertices.keys.each{ |v|
+                if v.hostname === neighbor
+                    temp_node = v
+                end
+            }
+
+            cost = elements[2].to_i
+			$costs[neighbor] = cost
+            #puts temp_node
+            $network.vertices[me][temp_node] = cost
+            #add other way?
+
+            #neighbors_mentioned.push(neighbor)
+		end
+
+	}
+    #---
+	
+
+    #puts $network.vertices.keys
+    #exit()
     #---run djikstras, generate early routing table
 
 end
@@ -131,14 +176,23 @@ def update_costs()
     #neighbors_mentioned = []
 
 	lines.each{ |l|
+        #puts l
 		elements = l.split(",")	#splitting by commas
 
 		if $my_interfaces.include? elements[0] #if entry is relevant to us
-			neighbor = $hostnames[elements[1]]
+			temp_node = nil
+            neighbor = $hostnames[elements[1]]
+            $network.vertices.keys.each{ |v|
+                if v.hostname === neighbor
+                    temp_node = v
+                end
+            }
+
+            neighbor = $hostnames[elements[1]]
             cost = elements[2].to_i
 			$costs[neighbor] = cost
 
-            $network.vertices[$hostname][neighbor] = cost
+            $network.vertices[$me_node][temp_node] = cost
 
             #neighbors_mentioned.push(neighbor)
 		end
@@ -190,15 +244,21 @@ end
 def broadcast()
 	puts "broadcasting packets"
 	#construct advertisement packet message
+    puts "#{$costs.inspect}"
 	message = "FLOOD#{$my_hostname},#{$costs.inspect},#{$version}"
     #puts message
     #broadcast message to all neighbors
+    #puts "hi "+"#{$my_links}"
     $my_links.keys.each{ |host|
         
-        sock = TCPSocket.new($my_links[host], $port)    #open socket
-        sock.write(message)                             #sending message
-        sock.close
-
+        begin
+            puts "sending packet to #{host}: #{$my_links[host]}"
+            sock = TCPSocket.new($my_links[host], $port)    #open socket
+            sock.write(message)                             #sending message
+            sock.close
+        rescue Errno::ECONNREFUSED
+            puts "connection refused"
+        end
     }
 
 end
@@ -213,7 +273,7 @@ def flood(message)
 
     $my_links.keys.each{ |host|
         
-        if not(host.eql? sender)    
+        if not(host == sender)    
             sock = TCPSocket.new($my_links[host], $port)    #open socket
             sock.write(message)                             #sending message
             sock.close
@@ -267,7 +327,7 @@ serv_socket = TCPServer.new('',$port)
 serv_socket.listen(15)   #backlog of 15
 
 #!!!
-sleep(2)       #make sure all other nodes are listening?
+sleep(3)       #make sure all other nodes are listening?
 broadcast()     #first broadcast
 
 while 1 < 2 do	#infinite server loop
@@ -301,7 +361,7 @@ while 1 < 2 do	#infinite server loop
         conn.close()
         
         #if it's an advertisement
-        if message[0..5].eql? "FLOOD"
+        if message[0..5] == "FLOOD"
             flood(message)
         end
 
