@@ -23,7 +23,7 @@ $dump_time = Time.now
 $version = 0
 $me_node = nil
 
-$circuits = {}
+$circuits = []
 
 #used to map ip addresses to hostnames
 $my_hostname = ""
@@ -41,7 +41,14 @@ $routing_table = {} #hashmap of destinations to next nodes
 
 $network = nil
 
-
+class Circuit
+    attr_accessor   :tag,:next_node
+    
+    def initialize(tag,next_node)
+        @tag = tag
+        @next_node = next_node
+    end
+end
 
 #initializes global vars from config file, initializes network graph,
 #propagates hashmap of ip addresses to hostnames, identifies self
@@ -418,6 +425,63 @@ def dump_table()
     #will complete after routing table functionality is implemented
 end
 
+#establishes a virtual circuit along the path to hostname
+def establish_circuit(hostname)
+    node = $routing_table[hostname]
+    if node == nil
+        puts "unable to route to host"
+        return
+    end
+
+    nextnode = $routing_table[node]
+    message = "CIRCUIT#{$my_hostname}->#{node.hostname}"
+    
+    #---propagate fields of struct & add to list
+    c = Circuit.new("#{$my_hostname}->#{hostname}", node)
+    $circuits.push(c)
+
+    #--- 
+
+    begin
+        #puts "sending packet to #{host}: #{$my_links[host]}"
+        sock = TCPSocket.new($my_links[hostname], $port)    #open socket
+        sock.write(message)                             #sending message
+        sock.close
+    rescue Errno::ECONNREFUSED
+        puts "connection refused"
+    end
+    
+end
+
+def handle_circuit(message)
+    puts("establishing circuit on this node")
+    /CIRCUIT(.*)->(.*)/.match(message)
+    src = $1
+    dst = $2
+
+    if dst === $my_hostname
+        c = Circuit.new("#{$1}->#{$2}", nil)
+        $circuits.push(c)
+        return  
+    end
+
+    node = $routing_table[dst]
+    
+
+    #---propagate fields of struct & add to list
+    c = Circuit.new("#{$1}->#{$2}", node)
+
+    #---    
+    begin
+        #puts "sending packet to #{host}: #{$my_links[host]}"
+        sock = TCPSocket.new($my_links[node.hostname], $port)    #open socket
+        sock.write(message)                             #sending message
+        sock.close
+    rescue Errno::ECONNREFUSED
+        #puts "connection refused"
+    end
+    
+end
 # --- perform initialization tasks ---
 
 #-> call update_costs() for the first time, propagate neighbor array
@@ -465,7 +529,7 @@ while 1 < 2 do	#infinite server loop
     begin
         conn = serv_socket.accept_nonblock  #accept a connection if any in queue
         message = conn.recv($packet_size)
-        puts message
+        #puts message
         conn.close()
         
         #if it's an advertisement
@@ -474,7 +538,9 @@ while 1 < 2 do	#infinite server loop
             flood(message)
         end
 
-        #otherwise...?
+        if message[0..6] == "CIRCUIT"
+            handle_circuit(message)        
+        end
     
 
     rescue Errno::EAGAIN,Errno::EWOULDBLOCK
@@ -484,5 +550,3 @@ while 1 < 2 do	#infinite server loop
 	#--- check for user input? (i.e. message sending?) ---
 
 end
-
-
