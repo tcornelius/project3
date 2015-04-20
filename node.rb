@@ -6,7 +6,7 @@
 #!!! Test marker
 
 require 'socket'
-require "/home/core/sandbox/project3/graph"
+require "/home/core/graph"
 
 # --- global variables
 $port = 9998
@@ -420,8 +420,21 @@ end
 def dump_table()
     puts "======= Routing Table ======="
 	puts $routing_table.inspect
+    File.open($dump_path, 'w'){ |file|
 
-    sleep(5)
+        file.write("====Routing Table:#{$my_hostname}====\n")
+        file.write("DEST\t\tNEXT\n")
+        $routing_table.keys.each{ |k|
+            moop = $routing_table[k]
+            
+            if not($routing_table[k].class == String)
+                moop = $routing_table[k].hostname
+            end
+
+            file.write("#{k}\t\t#{moop}\n")
+        }
+    }
+    sleep(1)
     #will complete after routing table functionality is implemented
 end
 
