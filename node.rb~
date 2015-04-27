@@ -56,7 +56,7 @@ end
 #propagates hashmap of ip addresses to hostnames, identifies self
 #creates graphnode of self and inserts into graph.
 def init()
-	puts "initializing global variables"
+	#puts "initializing global variables"
 	lines = IO.readlines("/home/core/global.cfg")
 	lines.each{ |l|
 		elements = l.split("=") #splitting by =
@@ -132,7 +132,7 @@ def init()
     
     #puts $my_links.keys
     $my_links.keys.each{ |host|
-        puts "adding neighbor to graph"
+        #puts "adding neighbor to graph"
         node = Graph_Node.new(host, $version)
         temp = {}
         $network.add_node(node, temp)
@@ -214,7 +214,7 @@ end
 
 #runs periodically. updates direct neighbor costs by reading in costs file.
 def update_costs()
-	puts "updating costs from file"
+	#puts "updating costs from file"
 	lines = IO.readlines("/home/core/costs.csv")
     #!!!
     #lines = IO.readlines("costs.csv")   #for testing purposes
@@ -276,7 +276,7 @@ end
 
 #runs periodically - updates routing table
 def update_routing_table(graph, me)
-    puts "Updating routing table"
+    #puts "Updating routing table"
     # run dijsktra from us to every other node in the graph $network
     
     $routing_table[$my_hostname] = $my_hostname
@@ -302,7 +302,7 @@ end
 
 #runs periodically. floods network with advertisement packets.
 def broadcast()
-	puts "broadcasting packets"
+	#puts "broadcasting packets"
 	#construct advertisement packet message
     #puts "#{$costs.inspect}"
     hash = {}
@@ -331,7 +331,7 @@ end
 
 #function to handle external advertisement packets
 def flood(message)
-	puts "processing advertisement packet"
+	#puts "processing advertisement packet"
     if($received_broadcasts.include?(message))
         return
     end
@@ -426,8 +426,8 @@ end
 
 #runs periodically. dumps routing table to file for grading purposes.
 def dump_table()
-    puts "======= Routing Table ======="
-	puts $routing_table.inspect
+    #puts "======= Routing Table ======="
+	#puts $routing_table.inspect
     File.open($dump_path, 'w'){ |file|
 
         file.write("====Routing Table:#{$my_hostname}====\n")
@@ -475,7 +475,7 @@ def establish_circuit(hostname)
 end
 
 def handle_circuit(message)
-    puts("establishing circuit on this node")
+    #puts("establishing circuit on this node")
     /CIRCUIT(.*)->(.*)/.match(message)
     src = $1
     dst = $2
@@ -508,7 +508,9 @@ def handle_sendmsg(cmd)
     return
 end
 
-def start_ping(cmd)
+def start_ping(cmd, ping_socket)
+    puts "pinging..."
+
     /PING (.+) (.+) (.+)/.match(cmd)
     dst = $1
     numpings = $2
@@ -521,12 +523,14 @@ def start_ping(cmd)
 
     #craft ping message
     message = "PING #{$my_hostname}->#{$1}"
-    nextnode = $routing_table[dst]
+    nextnode = $routing_table[dst].hostname
     
+    num = numpings.to_i
     #send it forward
     begin
-        while(numpings.to_i > 0)
+        while(num > 0)
             start_time = Time.now
+            puts "pinging #{nextnode}:"
             sock = TCPSocket.new($my_links[nextnode], $port-1)
             sock.write(message)
             sock.close
@@ -536,17 +540,18 @@ def start_ping(cmd)
             loop{
                 begin
                     conn = ping_socket.accept_nonblock
-                    message = conn.recv($packet_size)
-                    #puts message
+                    mess = conn.recv($packet_size)
+                    #puts "mess=#{mess}"
                     conn.close()
-                    ret = handle_ping(message)
+                    ret = handle_ping(mess)
                     if ret == "done"
-                        #print out ping data
+                        end_time = Time.now
+                        puts "Reply from #{dst}: time=#{end_time-start_time}s"
                         break
                     end
 
                     if (Time.now - start_time > 5)
-                        #print timeout error
+                        puts "ERROR: ping timeout"
                         break
                     end
 
@@ -555,7 +560,7 @@ def start_ping(cmd)
                 end
             }
 
-            numpings = numpings - 1
+            num = num - 1
             sleep(delay.to_i)
         end
     rescue Errno::ECONNREFUSED
@@ -564,6 +569,7 @@ def start_ping(cmd)
 end
 
 def handle_ping(message)
+    #puts "received ping msg: #{message}"
     /(.*) (.*)->(.*)/.match(message)
     ping = $1
     src = $2
@@ -587,13 +593,14 @@ def handle_ping(message)
         end
         
         return
-    else if (dst == $my_hostname and ping == "PINGR")
+
+    elsif (dst == $my_hostname and ping == "PINGR")
         return "done"
     end
 
     #craft ping message
     mess = "#{$1} #{$2}->#{$3}"
-    nextnode = $routing_table[dst]
+    nextnode = $routing_table[dst].hostname
     
     #send it forward
     begin
@@ -696,23 +703,26 @@ while 1 < 2 do	#infinite server loop
     end
 
 	#--- check for user input (i.e. message sending) ---
+    
+    begin
 
-    cmd = (STDIN.tty?) ? nil : $stdin.read
-    if not(cmd == nil)
+        cmd = $stdin.read_nonblock(80) #max command size = 80 chars
+        #puts "cmd=#{cmd}"    
         #process command
         if(cmd[0..6] == "SENDMSG")
             #handle SENDMSG
             start_sendmsg(cmd)
-        else if (cmd[0..3] == "PING")
+        elsif (cmd[0..3] == "PING")
             #handle PING
             start_ping(cmd, ping_socket)
-        else if(cmd[0..9] == "TRACEROUTE")
+        elsif(cmd[0..9] == "TRACEROUTE")
             #handle TRACEROUTE
             start_traceroute(cmd)
         else
             puts "Invalid command."
         end
 
+    rescue Errno::EWOULDBLOCK, Errno::EAGAIN
+        #if no input
     end
-
 end
