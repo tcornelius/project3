@@ -39,6 +39,8 @@ $costs = {}         #hashmap of neighbor hostnames to their costs. updated
 
 $routing_table = {} #hashmap of destinations to next nodes
 
+$received_broadcasts = [] #array of received advertisements
+
 $network = nil
 
 class Circuit
@@ -330,6 +332,12 @@ end
 #function to handle external advertisement packets
 def flood(message)
 	puts "processing advertisement packet"
+    if($received_broadcasts.include?(message))
+        return
+    end
+
+    $received_broadcasts.push(message)
+
     packet = message.split(",")
     sender = packet[0]
 
@@ -495,6 +503,112 @@ def handle_circuit(message)
     end
     
 end
+
+def handle_sendmsg(cmd)
+    return
+end
+
+def start_ping(cmd)
+    /PING (.+) (.+) (.+)/.match(cmd)
+    dst = $1
+    numpings = $2
+    delay = $3
+
+    if(not($routing_table.keys.include? dst))
+        puts "Hostname not found."
+        return
+    end
+
+    #craft ping message
+    message = "PING #{$my_hostname}->#{$1}"
+    nextnode = $routing_table[dst]
+    
+    #send it forward
+    begin
+        while(numpings.to_i > 0)
+            start_time = Time.now
+            sock = TCPSocket.new($my_links[nextnode], $port-1)
+            sock.write(message)
+            sock.close
+            
+            #handle ping messages until complete or timeout
+            
+            loop{
+                begin
+                    conn = ping_socket.accept_nonblock
+                    message = conn.recv($packet_size)
+                    #puts message
+                    conn.close()
+                    ret = handle_ping(message)
+                    if ret == "done"
+                        #print out ping data
+                        break
+                    end
+
+                    if (Time.now - start_time > 5)
+                        #print timeout error
+                        break
+                    end
+
+                rescue Errno::EAGAIN,Errno::EWOULDBLOCK
+                #nothing in queue!
+                end
+            }
+
+            numpings = numpings - 1
+            sleep(delay.to_i)
+        end
+    rescue Errno::ECONNREFUSED
+        puts "connection refused"
+    end
+end
+
+def handle_ping(message)
+    /(.*) (.*)->(.*)/.match(message)
+    ping = $1
+    src = $2
+    dst = $3
+
+    if(not($routing_table.keys.include? dst))
+        puts "Hostname not found."
+        return
+    end
+
+    if(dst == $my_hostname and ping == "PING")
+        #send PINGResponse packet back
+        retmess = "PINGR #{$3}->#{$2}"
+        nextnode = $routing_table[$2]
+        begin
+            sock = TCPSocket.new($my_links[nextnode], $port-1)
+            sock.write(retmess)
+            sock.close
+        rescue Errno::ECONNREFUSED
+            puts "connection refused"
+        end
+        
+        return
+    else if (dst == $my_hostname and ping == "PINGR")
+        return "done"
+    end
+
+    #craft ping message
+    mess = "#{$1} #{$2}->#{$3}"
+    nextnode = $routing_table[dst]
+    
+    #send it forward
+    begin
+        sock = TCPSocket.new($my_links[nextnode], $port-1)
+        sock.write(mess)
+        sock.close
+
+    rescue Errno::ECONNREFUSED
+        puts "connection refused"
+    end
+end
+
+def handle_traceroute(cmd)
+    return
+end
 # --- perform initialization tasks ---
 
 #-> call update_costs() for the first time, propagate neighbor array
@@ -509,6 +623,9 @@ update_routing_table($network, $me_node)
 
 serv_socket = TCPServer.new('',$port)
 serv_socket.listen(15)   #backlog of 15
+
+ping_socket = TCPServer.new('',$port-1)
+ping_socket.listen(15)  #backlog of 15
 
 #!!!
 sleep(3)       #make sure all other nodes are listening?
@@ -560,6 +677,42 @@ while 1 < 2 do	#infinite server loop
         #nothing in queue!
     end
 
-	#--- check for user input? (i.e. message sending?) ---
+    #---handle received pings---
+    begin
+        conn = ping_socket.accept_nonblock  #accept a connection if any in queue
+        message = conn.recv($packet_size)
+        #puts message
+        conn.close()
+        
+        #if it's an advertisement
+        
+        if message[0..3] == "PING"
+            handle_ping(message)
+        end
+    
+
+    rescue Errno::EAGAIN,Errno::EWOULDBLOCK
+        #nothing in queue!
+    end
+
+	#--- check for user input (i.e. message sending) ---
+
+    cmd = (STDIN.tty?) ? nil : $stdin.read
+    if not(cmd == nil)
+        #process command
+        if(cmd[0..6] == "SENDMSG")
+            #handle SENDMSG
+            start_sendmsg(cmd)
+        else if (cmd[0..3] == "PING")
+            #handle PING
+            start_ping(cmd, ping_socket)
+        else if(cmd[0..9] == "TRACEROUTE")
+            #handle TRACEROUTE
+            start_traceroute(cmd)
+        else
+            puts "Invalid command."
+        end
+
+    end
 
 end
