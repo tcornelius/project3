@@ -237,6 +237,11 @@ def update_costs()
 
             #puts $network.vertices.keys.inspect
             $network.vertices.keys.each{ |v|
+                if v == nil
+                    #puts $network.vertices.keys.inspect
+                    next
+                end
+
                 if v.hostname === neighbor
                     temp_node = v
                 end
@@ -322,7 +327,10 @@ def broadcast()
     #broadcast message to all neighbors
     #puts "hi "+"#{$my_links}"
     $my_links.keys.each{ |host|
-        
+        if($my_links[host] == nil)
+            next
+        end
+
         begin
             #puts "sending packet to #{host}: #{$my_links[host]}"
             sock = TCPSocket.new($my_links[host], $port)    #open socket
@@ -330,6 +338,7 @@ def broadcast()
             sock.close
         rescue Errno::ECONNREFUSED
             #puts "connection refused"
+            
         end
     }
 
@@ -339,10 +348,15 @@ end
 def flood(message)
 	#puts "processing advertisement packet"
     if($received_broadcasts.include?(message))
-        return
+        num = rand(11)
+        if (num > 5)    #probabilistic flooding to reduce network traffic
+            return
+        end
+    else
+        $received_broadcasts.push(message)
     end
 
-    $received_broadcasts.push(message)
+    
 
     packet = message.split(",")
     sender = packet[0]
@@ -448,8 +462,19 @@ def dump_table()
             file.write("#{k}\t\t#{moop}\n")
         }
     }
-    sleep(1)
+    
     #will complete after routing table functionality is implemented
+end
+
+#removes a node from the graph and entry from routing table, then updates
+def remove_node(dst)
+    #puts "removing node and updating table"
+    n = $routing_table[dst]
+    $routing_table.delete(n.hostname)
+    
+    $network.vertices.delete(n)
+    #update routing table
+    update_routing_table($network, $me_node)
 end
 
 #establishes a virtual circuit along the path to hostname
@@ -477,6 +502,7 @@ def establish_circuit(hostname)
         sock.close
     rescue Errno::ECONNREFUSED
         puts "connection refused"
+        remove_node(hostname)
     end
     
     sleep(1)    #wait for circuit setup
@@ -510,6 +536,8 @@ def handle_circuit(message)
         sock.close
     rescue Errno::ECONNREFUSED
         #puts "connection refused"
+        remove_node(dst)
+        handle_circuit(message)
     end
     
 end
@@ -576,6 +604,7 @@ def start_sendmsg(cmd, msg_socket)
     rescue Errno::ECONNREFUSED
         #---
         puts "failed to establish connection"
+        return
     end
     #wait for confirmation. timeout?
     start_time = Time.now
@@ -644,6 +673,8 @@ def handle_sendmsg(message)
                 sock.close
             rescue Errno::ECONNREFUSED
                 puts "conn refused (handle_sendmsg)"
+                remove_node(dst)
+                handle_sendmsg(message)
             end
 
             #tear down circuit
@@ -684,6 +715,8 @@ def handle_sendmsg(message)
         rescue Errno::ECONNREFUSED
             #---
             puts "conn refused (handle_sendmsg)"
+            remove_node(src)
+            handle_sendmsg(message)
         end
 
         #tear down circuit at this node
@@ -698,6 +731,8 @@ def handle_sendmsg(message)
         rescue Errno::ECONNREFUSED
             #---
             puts "conn refused (handle_sendmsg)"
+            remove_node(dst)
+            handle_sendmsg(message)
         end
     end
 
@@ -705,7 +740,7 @@ def handle_sendmsg(message)
 end
 
 def start_ping(cmd, ping_socket)
-    puts "pinging..."
+    
 
     /PING (.+) (.+) (.+)/.match(cmd)
     dst = $1
@@ -713,10 +748,12 @@ def start_ping(cmd, ping_socket)
     delay = $3
 
     if(not($routing_table.keys.include? dst))
-        puts "Hostname not found."
+        puts "Hostname not found. (start_ping)"
+        puts $routing_table.inspect
         return
     end
 
+    puts "pinging #{$1}..."
     #craft ping message
     message = "PING #{$my_hostname}->#{$1}"
     nextnode = $routing_table[dst].hostname
@@ -735,6 +772,12 @@ def start_ping(cmd, ping_socket)
             
             loop{
                 begin
+
+                    if (Time.now - start_time > 5)
+                        puts "PING ERROR: HOST UNREACHABLE"
+                        break
+                    end
+
                     conn = ping_socket.accept_nonblock
                     mess = conn.recv($packet_size)
                     #puts "mess=#{mess}"
@@ -746,10 +789,8 @@ def start_ping(cmd, ping_socket)
                         break
                     end
 
-                    if (Time.now - start_time > 5)
-                        puts "PING ERROR: HOST UNREACHABLE"
-                        break
-                    end
+                    
+                    
 
                 rescue Errno::EAGAIN,Errno::EWOULDBLOCK
                 #nothing in queue!
@@ -759,9 +800,12 @@ def start_ping(cmd, ping_socket)
             num = num - 1
             sleep(delay.to_i)
         end
+        puts "PING complete."
     rescue Errno::ECONNREFUSED
         puts "connection refused"
+        return
     end
+    
 end
 
 def handle_ping(message)
@@ -772,7 +816,7 @@ def handle_ping(message)
     dst = $3
 
     if(not($routing_table.keys.include? dst))
-        puts "Hostname not found."
+        puts "Hostname #{dst} not found. (handle_ping)"
         return
     end
 
@@ -785,7 +829,9 @@ def handle_ping(message)
             sock.write(retmess)
             sock.close
         rescue Errno::ECONNREFUSED
-            puts "connection refused"
+            #puts "connection refused - line 794"
+            remove_node($2)
+            handle_ping(message)
         end
         
         return
@@ -800,20 +846,128 @@ def handle_ping(message)
     
     #send it forward
     begin
+        #puts "forwarding ping packet to #{nextnode} for #{dst}"
         sock = TCPSocket.new($my_links[nextnode], $port-1)
         sock.write(mess)
         sock.close
 
     rescue Errno::ECONNREFUSED
-        puts "connection refused"
+        #puts "connection refused - line 814"
+        #remove node from graph & routing table
+        remove_node(dst)
+        
+        handle_ping(message)
     end
 end
 
-def start_traceroute(cmd, ping_socket)
+def start_traceroute(cmd, tracert_socket)
+    puts "tracing..."
 
+    /TRACEROUTE (.+)/.match(cmd)
+    dst = $1
+
+    if(not($routing_table.keys.include? dst))
+        puts "Hostname not found."
+        return
+    end
+
+    #craft trace message
+    message = "TRACE #{$my_hostname}->#{$1}"
+    nextnode = $routing_table[dst].hostname
+    
+    begin
+        #send out the traceroute request
+        start_time = Time.now
+        sock = TCPSocket.new($my_links[nextnode], $port-3)
+        sock.write(message)
+        sock.close
+
+        loop{
+                begin
+                    conn = tracert_socket.accept_nonblock
+                    mess = conn.recv($packet_size)
+                    #puts "mess=#{mess}"
+                    conn.close()
+                    ret = handle_traceroute(mess)
+                    if ret == "trace_complete"
+                        end_time = Time.now
+                        arr = mess.split(' ')   #data starts at arr[2]
+                        i = 2
+                        while(i < arr.length)
+                            /(.*)=>(.*)/.match(arr[i])
+                            #puts mess
+                            puts "#{i-1} #{($2.to_f - start_time.to_f)*2}s #{$1}"
+                            i = i + 1
+                        end
+                        puts "Trace complete."
+                        break
+                    end
+
+                    if (Time.now - start_time > 6)
+                        puts "TRACEROUTE ERROR: HOST UNREACHABLE"
+                        break
+                    end
+
+                rescue Errno::EAGAIN,Errno::EWOULDBLOCK
+                #nothing in queue!
+                end
+        }
+    rescue Errno::ECONNREFUSED
+        #---
+        puts "conn refused (start_traceroute)"
+    end
+    #send it forward
 end
 
 def handle_traceroute(message)
+    arr = message.split(' ')
+
+    type = arr[0]
+    tag = arr[1]
+    /(.*)->(.*)/.match(tag)
+    src = $1
+    dst = $2
+   
+    
+    #---handling
+
+    if(type == "TRACER" and src==$my_hostname)  #trace successful
+        #return success
+        return "trace_complete"
+    elsif(type == "TRACER" and not(src == $my_hostname))
+        #forward packet to src
+        nextnode = $routing_table[src].hostname
+        begin
+            sock = TCPSocket.new($my_links[nextnode], $port-3)
+            sock.write(message)
+            sock.close
+            return
+        rescue Errno::ECONNREFUSED
+            #---
+        end
+    elsif(type == "TRACE" and dst == $my_hostname)  
+        #append & send TRACER back to src
+        nextnode = $routing_table[src].hostname
+        begin
+            sock = TCPSocket.new($my_links[nextnode], $port-3)
+            sock.write(message[0..4] + "R" + message[5..message.length] + " #{$my_hostname}=>#{Time.now.to_f}")
+            sock.close
+            return
+        rescue Errno::ECONNREFUSED
+            #---
+        end
+    elsif(type == "TRACE" and not(dst == $my_hostname))
+        #append to message and forward to dst
+        nextnode = $routing_table[dst].hostname
+    end
+        begin
+            sock = TCPSocket.new($my_links[nextnode], $port-3)
+            sock.write(message + " #{$my_hostname}=>#{Time.now.to_f}")
+            sock.close
+            return
+        rescue Errno::ECONNREFUSED
+            #---
+        end
     return
 end
 # --- perform initialization tasks ---
@@ -837,8 +991,11 @@ ping_socket.listen(15)  #backlog of 15
 msg_socket = TCPServer.new('',$port-2)
 msg_socket.listen(15)   #backlog of 15
 
+tracert_socket = TCPServer.new('',$port-3)
+tracert_socket.listen(15)
+
 #!!!
-sleep(3)       #make sure all other nodes are listening?
+sleep(1)       #make sure all other nodes are listening?
 
 broadcast()     #first broadcast
 
@@ -905,6 +1062,19 @@ while 1 < 2 do	#infinite server loop
         #nothing in queue!
     end
 
+    #---handle received TRACEs---
+    begin
+        conn = tracert_socket.accept_nonblock  #accept a connection if any in queue
+        message = conn.recv($packet_size)
+        #puts message
+        conn.close()
+        handle_traceroute(message)
+          
+
+    rescue Errno::EAGAIN,Errno::EWOULDBLOCK
+        #nothing in queue!
+    end
+
     #---handle received SENDMSGs---
     begin
         conn = msg_socket.accept_nonblock  #accept a connection if any in queue
@@ -934,7 +1104,7 @@ while 1 < 2 do	#infinite server loop
             start_ping(cmd, ping_socket)
         elsif(cmd[0..9] == "TRACEROUTE")
             #handle TRACEROUTE
-            start_traceroute(cmd)
+            start_traceroute(cmd, tracert_socket)
         else
             puts "Invalid command."
         end
