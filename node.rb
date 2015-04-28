@@ -23,7 +23,7 @@ $dump_time = Time.now
 $version = 0
 $me_node = nil
 
-$circuits = []
+$circuits = {}
 
 #used to map ip addresses to hostnames
 $my_hostname = ""
@@ -44,11 +44,17 @@ $received_broadcasts = [] #array of received advertisements
 $network = nil
 
 class Circuit
-    attr_accessor   :tag,:next_node
+    attr_accessor   :tag,:next_node,:prev_node,:data,:src,:dst
     
-    def initialize(tag,next_node)
+    def initialize(tag,next_node,prev_node)
         @tag = tag
         @next_node = next_node
+        @prev_node = prev_node
+        @data = ""  #empty string to hold data
+
+        /(.*)->(.*)/.match(tag)
+        @src = $1
+        @dst = $2
     end
 end
 
@@ -449,29 +455,32 @@ end
 #establishes a virtual circuit along the path to hostname
 def establish_circuit(hostname)
     node = $routing_table[hostname]
-    if node == nil
+    if node == nil or node == $my_hostname
         puts "unable to route to host"
         return
     end
-
-    nextnode = $routing_table[node]
-    message = "CIRCUIT#{$my_hostname}->#{node.hostname}"
+    
+    nextnode = node.hostname
+    message = "CIRCUIT#{$my_hostname}->#{hostname}"
     
     #---propagate fields of struct & add to list
-    c = Circuit.new("#{$my_hostname}->#{hostname}", node)
-    $circuits.push(c)
+    c = Circuit.new("#{$my_hostname}->#{hostname}", nextnode, nil)
+    #puts "establishing circuit: #{$my_hostname}->#{hostname}"
+    $circuits["#{$my_hostname}->#{hostname}"] = c
 
     #--- 
 
     begin
-        #puts "sending packet to #{host}: #{$my_links[host]}"
-        sock = TCPSocket.new($my_links[hostname], $port)    #open socket
+        #puts "sending circuit packet to #{hostname}: #{$my_links[hostname]}"
+        sock = TCPSocket.new($my_links[nextnode], $port)    #open socket
         sock.write(message)                             #sending message
         sock.close
     rescue Errno::ECONNREFUSED
         puts "connection refused"
     end
     
+    sleep(1)    #wait for circuit setup
+
 end
 
 def handle_circuit(message)
@@ -479,22 +488,23 @@ def handle_circuit(message)
     /CIRCUIT(.*)->(.*)/.match(message)
     src = $1
     dst = $2
-
+    #puts "src=#{src}, dst=#{dst}"
     if dst === $my_hostname
-        c = Circuit.new("#{$1}->#{$2}", nil)
-        $circuits.push(c)
+        c = Circuit.new("#{$1}->#{$2}", nil, $routing_table[src].hostname)
+        $circuits["#{$1}->#{$2}"] = c
         return  
     end
 
     node = $routing_table[dst]
-    
+    #puts $routing_table
 
     #---propagate fields of struct & add to list
-    c = Circuit.new("#{$1}->#{$2}", node)
+    c = Circuit.new("#{$1}->#{$2}", node.hostname, $routing_table[src].hostname)
+    $circuits["#{$1}->#{$2}"] = c    
 
     #---    
     begin
-        #puts "sending packet to #{host}: #{$my_links[host]}"
+        #puts "sending circuit packet to #{node.hostname}: #{$my_links[node.hostname]}"
         sock = TCPSocket.new($my_links[node.hostname], $port)    #open socket
         sock.write(message)                             #sending message
         sock.close
@@ -504,8 +514,194 @@ def handle_circuit(message)
     
 end
 
-def handle_sendmsg(cmd)
-    return
+def start_sendmsg(cmd, msg_socket)
+    /SENDMSG ([a-zA-Z0-9]+) (.*)/.match(cmd)
+    dst = $1
+    data = $2
+    
+    #puts "data=#{data}"
+    #if(dst == nil)
+    #    puts "SENDMSG ERROR: Illegal message"
+    #end
+
+    if($routing_table[dst] == nil)
+        puts "SENDMSG ERROR: HOST UNREACHABLE"
+        return
+    end
+
+    establish_circuit(dst)
+    sleep(1)
+
+    str = "#{$my_hostname}->#{dst}"
+    #puts str
+    #puts $circuits.inspect
+    circuit = $circuits[str]
+    #puts "circuit:"
+    #puts circuit.inspect
+
+    nextnode = circuit.next_node
+
+    #craft message
+    data_len = data.length
+    message = "SENDMSG #{$my_hostname}->#{dst} "
+    header_len = message.length #length of header
+
+    index = 0
+
+    begin
+        #puts "beginning SENDMSG to #{$my_links[nextnode]}"
+        sock = TCPSocket.new($my_links[nextnode], $port-2)
+        
+        while (index < data_len)
+            max_chunk = $packet_size - header_len   #max data per packet
+            len = (data_len - index) < max_chunk ? (data_len - index) : max_chunk
+
+            curr_message = message + data[index..(index+len)]
+ 
+            sock.write(curr_message)
+            
+            index = index + len     #update index
+            #puts "data_len=#{data_len}  index=#{index} len=#{len}"
+            sleep(1)
+        end
+
+        sock.close
+        #send end marker
+        #---
+        #puts "sending end packet"
+        sock = TCPSocket.new($my_links[nextnode], $port-2)
+        sock.write("END #{$my_hostname}->#{dst}")
+        sock.close
+
+    rescue Errno::ECONNREFUSED
+        #---
+        puts "failed to establish connection"
+    end
+    #wait for confirmation. timeout?
+    start_time = Time.now
+
+    loop{
+        begin
+            conn = msg_socket.accept_nonblock
+            mess = conn.recv($packet_size)
+            conn.close()
+            ret = handle_sendmsg(mess)
+            #puts "ret = #{ret}"
+            if ret == "success"
+                #puts "successful message transmission"
+                break
+            end
+
+            if (Time.now - start_time > 5)
+                puts "SENDMSG ERROR: HOST UNREACHABLE"
+                break
+            end
+
+        rescue Errno::EAGAIN,Errno::EWOULDBLOCK
+            #nothing in queue!
+        end
+    }
+    
+end
+
+def handle_sendmsg(message)
+    #puts "handling SENDMSG packet"
+    #puts message
+    /([A-Z]+) ([a-zA-Z0-9]+)->([a-zA-Z0-9]+) (.*)/.match(message)
+    #arr = message.split(' ')
+
+    type = $1
+    src = $2
+    dst = $3
+    packet_data = $4
+
+    if type == nil
+        /(.*) (.*)->(.*)/.match(message)
+        type = $1
+        src = $2
+        dst = $3
+        packet_data = nil
+    end
+
+    #puts "type=#{type},src=#{src},dst=#{dst},data=#{packet_data}"
+    #fetch circuit struct
+    circuit = $circuits["#{src}->#{dst}"]
+    #puts $circuits
+    #puts circuit.inspect
+    
+    #puts "dst = #{dst}, my hostname = #{$my_hostname}"
+    if(dst == $my_hostname)
+        if(type == "END")
+            #puts "END of message"
+            #print out circuit.data, message received
+            puts "RECEIVED MSG #{src} #{circuit.data}"
+            #send confirmation to src
+            begin
+                nextnode = circuit.prev_node
+                confirmation = "CONFIRM #{dst}->#{src}"
+                sock = TCPSocket.new($my_links[nextnode], $port-2)
+                sock.write(confirmation)
+                sock.close
+            rescue Errno::ECONNREFUSED
+                puts "conn refused (handle_sendmsg)"
+            end
+
+            #tear down circuit
+            $circuits.delete("#{src}->#{dst}")
+            return "complete message received"
+        end
+
+        if(type == "SENDMSG") 
+            #puts "adding to buffer"  
+            #add to circuit buffer
+            if(packet_data == nil)
+                return
+            end
+
+            circuit.data = circuit.data + packet_data
+            return "added data to buffer"
+            #puts "this should never print"
+        end
+
+        if(type == "CONFIRM")   #transmission successful
+            #puts "CONFIRM message"
+            return "success"
+        end
+    end
+
+    #if we're not the dst
+
+    #puts "FORWARDING MESSAGE"
+    #puts message
+    if(type == "CONFIRM")   #forward to src, not dst. teardown circuit
+        #puts "forwarding confirmation"
+        circuit = $circuits["#{dst}->#{src}"]
+        nextnode = circuit.prev_node       
+        begin
+            sock = TCPSocket.new($my_links[nextnode], $port-2)
+            sock.write(message)
+            sock.close
+        rescue Errno::ECONNREFUSED
+            #---
+            puts "conn refused (handle_sendmsg)"
+        end
+
+        #tear down circuit at this node
+        $circuits.delete("#{dst}->#{src}") #src and dst are switched (going other way)
+        
+    else                    #forward to dst
+        nextnode = circuit.next_node
+        begin
+            sock = TCPSocket.new($my_links[nextnode], $port-2)
+            sock.write(message)
+            sock.close
+        rescue Errno::ECONNREFUSED
+            #---
+            puts "conn refused (handle_sendmsg)"
+        end
+    end
+
+    return "forwarded"
 end
 
 def start_ping(cmd, ping_socket)
@@ -551,7 +747,7 @@ def start_ping(cmd, ping_socket)
                     end
 
                     if (Time.now - start_time > 5)
-                        puts "ERROR: ping timeout"
+                        puts "PING ERROR: HOST UNREACHABLE"
                         break
                     end
 
@@ -613,7 +809,11 @@ def handle_ping(message)
     end
 end
 
-def handle_traceroute(cmd)
+def start_traceroute(cmd, ping_socket)
+
+end
+
+def handle_traceroute(message)
     return
 end
 # --- perform initialization tasks ---
@@ -633,6 +833,9 @@ serv_socket.listen(15)   #backlog of 15
 
 ping_socket = TCPServer.new('',$port-1)
 ping_socket.listen(15)  #backlog of 15
+
+msg_socket = TCPServer.new('',$port-2)
+msg_socket.listen(15)   #backlog of 15
 
 #!!!
 sleep(3)       #make sure all other nodes are listening?
@@ -702,6 +905,20 @@ while 1 < 2 do	#infinite server loop
         #nothing in queue!
     end
 
+    #---handle received SENDMSGs---
+    begin
+        conn = msg_socket.accept_nonblock  #accept a connection if any in queue
+        message = conn.recv($packet_size)
+        #puts message
+        conn.close()
+        handle_sendmsg(message)
+          
+
+    rescue Errno::EAGAIN,Errno::EWOULDBLOCK
+        #nothing in queue!
+    end
+
+
 	#--- check for user input (i.e. message sending) ---
     
     begin
@@ -711,7 +928,7 @@ while 1 < 2 do	#infinite server loop
         #process command
         if(cmd[0..6] == "SENDMSG")
             #handle SENDMSG
-            start_sendmsg(cmd)
+            start_sendmsg(cmd, msg_socket)
         elsif (cmd[0..3] == "PING")
             #handle PING
             start_ping(cmd, ping_socket)
