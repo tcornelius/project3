@@ -1,7 +1,7 @@
 # Thomas Cornelius
 # Shyam Patel
 # CMSC417 Project 3
-# Part 1 submission
+# Part 2 submission
 
 #!!! Test marker
 
@@ -15,7 +15,7 @@ $packet_size = 256
 $costs_path = "/home/core/costs.csv"
 $dump_path = "table.dump"
 $dump_interval = 10
-$round_delay = 5
+$round_delay = 0.5
 $costs_delay = 60
 $round_time = Time.now
 $costs_time = Time.now
@@ -387,6 +387,10 @@ def flood(message)
         node2 = nil
 
         $network.vertices.keys.each{ |v|
+            if v == nil
+                next
+            end
+
             if v.hostname === neighbor
                 node = v
             end
@@ -603,7 +607,7 @@ def start_sendmsg(cmd, msg_socket)
 
     rescue Errno::ECONNREFUSED
         #---
-        puts "failed to establish connection"
+        puts "SENDMSG ERROR: HOST UNREACHABLE"
         return
     end
     #wait for confirmation. timeout?
@@ -714,7 +718,7 @@ def handle_sendmsg(message)
             sock.close
         rescue Errno::ECONNREFUSED
             #---
-            puts "conn refused (handle_sendmsg)"
+            #puts "conn refused (handle_sendmsg)"
             remove_node(src)
             handle_sendmsg(message)
         end
@@ -730,7 +734,7 @@ def handle_sendmsg(message)
             sock.close
         rescue Errno::ECONNREFUSED
             #---
-            puts "conn refused (handle_sendmsg)"
+            #puts "SEND"
             remove_node(dst)
             handle_sendmsg(message)
         end
@@ -748,12 +752,12 @@ def start_ping(cmd, ping_socket)
     delay = $3
 
     if(not($routing_table.keys.include? dst))
-        puts "Hostname not found. (start_ping)"
-        puts $routing_table.inspect
+        puts "PING ERROR: UNKNOWN HOST"
+        #puts $routing_table.inspect
         return
     end
 
-    puts "pinging #{$1}..."
+    
     #craft ping message
     message = "PING #{$my_hostname}->#{$1}"
     nextnode = $routing_table[dst].hostname
@@ -761,9 +765,10 @@ def start_ping(cmd, ping_socket)
     num = numpings.to_i
     #send it forward
     begin
+        puts "pinging #{$1}..."
         while(num > 0)
             start_time = Time.now
-            #puts "pinging #{nextnode}:"
+            #puts "pinging through #{nextnode}"
             sock = TCPSocket.new($my_links[nextnode], $port-1)
             sock.write(message)
             sock.close
@@ -802,7 +807,9 @@ def start_ping(cmd, ping_socket)
         end
         puts "PING complete."
     rescue Errno::ECONNREFUSED
-        puts "connection refused"
+        #puts "connection refused (start_ping)"
+        remove_node(dst)
+        start_ping(cmd, ping_socket)
         return
     end
     
@@ -816,7 +823,8 @@ def handle_ping(message)
     dst = $3
 
     if(not($routing_table.keys.include? dst))
-        puts "Hostname #{dst} not found. (handle_ping)"
+        #sleep(4)
+        #puts "PING ERROR: HOST UNREACHABLE"
         return
     end
 
@@ -861,29 +869,36 @@ def handle_ping(message)
 end
 
 def start_traceroute(cmd, tracert_socket)
-    puts "tracing..."
+    #puts "tracing..."
 
     /TRACEROUTE (.+)/.match(cmd)
     dst = $1
 
     if(not($routing_table.keys.include? dst))
-        puts "Hostname not found."
+        puts "TRACEROUTE ERROR: UNKNOWN HOST"
         return
     end
 
     #craft trace message
     message = "TRACE #{$my_hostname}->#{$1}"
     nextnode = $routing_table[dst].hostname
-    
+    #puts "nextnode = #{nextnode}"
+    #puts message
     begin
         #send out the traceroute request
         start_time = Time.now
         sock = TCPSocket.new($my_links[nextnode], $port-3)
         sock.write(message)
         sock.close
-
+        puts "tracing..."
         loop{
                 begin
+                    
+                    if (Time.now - start_time > 6)
+                        puts "TRACEROUTE ERROR: HOST UNREACHABLE"
+                        break
+                    end
+
                     conn = tracert_socket.accept_nonblock
                     mess = conn.recv($packet_size)
                     #puts "mess=#{mess}"
@@ -903,10 +918,7 @@ def start_traceroute(cmd, tracert_socket)
                         break
                     end
 
-                    if (Time.now - start_time > 6)
-                        puts "TRACEROUTE ERROR: HOST UNREACHABLE"
-                        break
-                    end
+                    
 
                 rescue Errno::EAGAIN,Errno::EWOULDBLOCK
                 #nothing in queue!
@@ -914,7 +926,9 @@ def start_traceroute(cmd, tracert_socket)
         }
     rescue Errno::ECONNREFUSED
         #---
-        puts "conn refused (start_traceroute)"
+        #puts "connection refused - start_traceroute"
+        remove_node(dst)
+        start_traceroute(cmd, tracert_socket)
     end
     #send it forward
 end
