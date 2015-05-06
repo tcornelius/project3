@@ -6,6 +6,7 @@
 #!!! Test marker
 
 require 'socket'
+require 'openssl'
 require "/home/core/graph"
 
 # --- global variables
@@ -42,6 +43,9 @@ $routing_table = {} #hashmap of destinations to next nodes
 $received_broadcasts = [] #array of received advertisements
 
 $network = nil
+
+$public_keys = {}   #hash of public keys
+$private_key = ''   #this node's private key
 
 class Circuit
     attr_accessor   :tag,:next_node,:prev_node,:data,:src,:dst
@@ -124,6 +128,9 @@ def init()
         end
     }
 
+    #read in public keys, retrieve private key
+    generate_keys() 
+     
     #puts $my_links.keys
     
     # populating $costs
@@ -216,6 +223,27 @@ def init()
     #exit()
     #---run djikstras, generate early routing table
 
+end
+
+#loads keys from file
+def generate_keys()
+    # loads the hashed dump files
+    if File.exists?('/home/core/public.keys') 
+        #puts "loading public keys"
+        $public_keys = Marshal.load(File.read('/home/core/public.keys'))
+    end 
+    if File.exists?('/home/core/private.keys')
+        #puts "loading private key" 
+        private_keys = Marshal.load(File.read('/home/core/private.keys'))
+    end 
+
+    #puts private_keys.inspect
+    $private_key = private_keys[$my_hostname]
+    #puts $public_keys["n2"]
+
+    if($public_keys.size < 1 or private_keys.size < 1 or $public_keys.size != private_keys.size)
+        puts "Invalid key dump files."
+    end
 end
 
 #runs periodically. updates direct neighbor costs by reading in costs file.
@@ -473,6 +501,10 @@ end
 #removes a node from the graph and entry from routing table, then updates
 def remove_node(dst)
     #puts "removing node and updating table"
+    if (dst == $my_hostname)
+        puts "Node removal error"
+        exit()
+    end
     n = $routing_table[dst]
     $routing_table.delete(n.hostname)
     
@@ -551,6 +583,21 @@ def start_sendmsg(cmd, msg_socket)
     dst = $1
     data = $2
     
+    #puts $private_key
+    rsa = OpenSSL::PKey::RSA.new($private_key, $my_hostname)
+    #hash data
+    sha256 = OpenSSL::Digest::SHA256.new
+    digest = sha256.digest(data)
+
+    #sign hash
+    sig = rsa.private_encrypt(digest)
+    #puts "sig = #{sig}"
+    
+    check = rsa.public_decrypt(sig)
+    
+    #puts "check=#{check}"
+    #puts "digst=#{digest}"
+    #exit()
     #puts "data=#{data}"
     #if(dst == nil)
     #    puts "SENDMSG ERROR: Illegal message"
@@ -602,7 +649,7 @@ def start_sendmsg(cmd, msg_socket)
         #---
         #puts "sending end packet"
         sock = TCPSocket.new($my_links[nextnode], $port-2)
-        sock.write("END #{$my_hostname}->#{dst}")
+        sock.write("END #{$my_hostname}->#{dst} SIG::#{sig}")
         sock.close
 
     rescue Errno::ECONNREFUSED
@@ -639,23 +686,46 @@ end
 
 def handle_sendmsg(message)
     #puts "handling SENDMSG packet"
-    #puts message
+    #puts "message=#{message}"
     /([A-Z]+) ([a-zA-Z0-9]+)->([a-zA-Z0-9]+) (.*)/.match(message)
     #arr = message.split(' ')
 
-    type = $1
-    src = $2
-    dst = $3
-    packet_data = $4
+    arr = message.split(' ')
+    #puts arr
+    type = arr[0]
+    src = ''
+    dst = ''
+    packet_data = ''
+    sig = ''
 
-    if type == nil
+    #puts "type = #{type}"
+    if type == "SENDMSG"
+        /([A-Z]+) ([a-zA-Z0-9]+)->([a-zA-Z0-9]+) (.*)/.match(message)
+        type = $1
+        src = $2
+        dst = $3
+        packet_data = $4
+    end
+
+    if type == "END"
+        /(.*) (.*)->(.*) SIG::(.*)/.match(message)
+        type = $1
+        src = $2
+        dst = $3
+        sig = message[(3+1+src.length+2+dst.length+1+5)..message.length]
+        #puts "sig=#{sig}"
+    end
+
+    if type == "CONFIRM"
         /(.*) (.*)->(.*)/.match(message)
         type = $1
         src = $2
         dst = $3
-        packet_data = nil
+
+        #puts dst
     end
 
+    
     #puts "type=#{type},src=#{src},dst=#{dst},data=#{packet_data}"
     #fetch circuit struct
     circuit = $circuits["#{src}->#{dst}"]
@@ -667,9 +737,28 @@ def handle_sendmsg(message)
         if(type == "END")
             #puts "END of message"
             #print out circuit.data, message received
-            puts "RECEIVED MSG #{src} #{circuit.data}"
+            rsa = OpenSSL::PKey::RSA.new($public_keys[src])
+            verified = false
+            #hash data
+            sha256 = OpenSSL::Digest::SHA256.new
+            digest = sha256.digest(circuit.data)
+
+            #verify signature
+            check = rsa.public_decrypt(sig)
+            #puts "#{check}  :  #{sig}"
+            if (check == digest)
+                verified = true
+            end
+
+            if (verified)
+                puts "Signature verified: #{src}"
+                puts "RECEIVED MSG #{src} #{circuit.data}"
+            else
+                puts "RECEIVED MSG ERROR: #{src} Signature verification failed"
+            end
             #send confirmation to src
             begin
+                
                 nextnode = circuit.prev_node
                 confirmation = "CONFIRM #{dst}->#{src}"
                 sock = TCPSocket.new($my_links[nextnode], $port-2)
